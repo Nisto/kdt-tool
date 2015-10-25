@@ -15,14 +15,15 @@ KDT_OFF_UNUSED2  = 0x0E
 KDT_OFF_SIZETBL  = 0x10
 
 class KDT:
-    def __init__(self, path, log=False):
+    def __init__(self, path, log=False, convert=False):
         self.path = path
         self.log = log
+        self.convert = convert
 
         with open(self.path, "rb") as kdt:
             self.buf = kdt.read()
 
-        if len(self.buf) < KDT_HEADER_SIZE or self.buf[KDT_OFF_ID:4] != b"KDT1":
+        if len(self.buf) < KDT_HEADER_SIZE or self.buf[KDT_OFF_ID:KDT_OFF_ID+4] != b"KDT1":
             sys.exit("ERROR: Not a valid KDT1 file: %s" % self.path)
 
         self.filesize = get_u32_le(self.buf, KDT_OFF_FILESIZE)
@@ -30,6 +31,9 @@ class KDT:
         self.tracks = get_u16_le(self.buf, KDT_OFF_TRACKS)
 
         self.buf = bytearray(self.buf[:self.filesize])
+
+        if self.convert:
+            self.midi = bytearray(51200)
 
         if self.tracks > 0:
 
@@ -54,89 +58,187 @@ class KDT:
         self.trk_size      = self.trk_size_tbl[trknum]
         self.trk_off_start = self.trk_off_tbl[trknum]
         self.trk_off_end   = self.trk_off_start + self.trk_size
-        self.trk_ended     = 0 # set by command 0xFFFF
         self.running       = 0 # sequence running status (expect delta-time when zero - note or command otherwise)
+        self.channel       = 0
         self.offset        = self.trk_off_start
 
     def read_cmd(self):
         self.cmd = self.buf[self.offset]
 
-        # only non-0xCA/0xCB commands takes an argument/parameter (confirmed via disassembly)
+        if self.log: print("0x%04X   COMMAND      Command: 0x%02X/0x%02X " % (self.offset - self.trk_off_start, self.cmd, self.cmd & 0x7F), end="")
+
+        # only non-0xCA/0xCB commands takes an argument/parameter
         if self.cmd == 0xCA:
             self.running = 0
             self.offset += 1
         elif self.cmd == 0xCB:
+            self.running = 1
             self.offset += 1
         else:
             self.cmdarg = self.buf[self.offset+1]
             self.running = self.cmdarg & 0x80
             self.offset += 2
 
-        """
-
-        Might be worth looking into:
-        http://web.archive.org/web/20151016183420/http://wiki.spinout182.com/w/Music_Sequences
-
-        """
+        # Might be worth looking into:
+        # http://web.archive.org/web/20151016183420/http://wiki.spinout182.com/w/Music_Sequences
 
         if self.cmd == 0x86: # Sets reverb type (hall, room, etc.) on first call, volume/depth on next call (e.g. 86[tt], 86[vv]) ... I think?
             # self.cmdarg & 0x??
-            if self.log: print("0x%04X   COMMAND      Command: 0x86/0x06 (Set Controller Volume), Argument/Parameter: 0x%02X" % (self.offset - 2 - self.trk_off_start, self.cmdarg & 0x7F))
+            if self.log: print("(Set Reverb Type), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
+                self.moff += 1
 
         elif self.cmd == 0x87: # Set main / channel volume
             # self.cmdarg & 0x7F
-            if self.log: print("0x%04X   COMMAND      Command: 0x87/0x07 (Set Main/Channel Volume), Argument/Parameter: 0x%02X" % (self.offset - 2 - self.trk_off_start, self.cmdarg & 0x7F))
+            if self.log: print("(Set Main/Channel Volume), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                self.midi[self.moff+0] = 0xB0 | self.channel
+                self.midi[self.moff+1] = 0x07
+                self.midi[self.moff+2] = self.cmdarg & 0x7F
+                self.moff += 3
 
         elif self.cmd == 0x8A: # Set panning
             # self.cmdarg & 0x7F
-            if self.log: print("0x%04X   COMMAND      Command: 0x8A/0x0A (Set Panning), Argument/Parameter: 0x%02X" % (self.offset - 2 - self.trk_off_start, self.cmdarg & 0x7F))
+            if self.log: print("(Set Panning), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                self.midi[self.moff+0] = 0xB0 | self.channel
+                self.midi[self.moff+1] = 0x0A
+                self.midi[self.moff+2] = self.cmdarg & 0x7F
+                self.moff += 3
 
         elif self.cmd == 0x8B: # Set controller volume ("expression is a percentage of the channel volume"?)
             # self.cmdarg & 0x7F
-            if self.log: print("0x%04X   COMMAND      Command: 0x8B/0x0B (Set Controller Volume), Argument/Parameter: 0x%02X" % (self.offset - 2 - self.trk_off_start, self.cmdarg & 0x7F))
+            if self.log: print("(Set Controller Volume), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                self.midi[self.moff+0] = 0xB0 | self.channel
+                self.midi[self.moff+1] = 0x0B
+                self.midi[self.moff+2] = self.cmdarg & 0x7F
+                self.moff += 3
 
-        elif self.cmd == 0xC6: # Set MIDI channel
+        elif self.cmd == 0xC6: # Set channel
             # self.cmdarg & 0x0F
-            if self.log: print("0x%04X   COMMAND      Command: 0xC6/0x46 (Set Channel), Argument/Parameter: 0x%02X" % (self.offset - 2 - self.trk_off_start, self.cmdarg & 0x0F))
+            if self.log: print("(Set Channel), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x0F))
+            if self.convert:
+                self.channel = self.cmdarg & 0x0F
+                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
+                self.moff += 1
 
-        elif self.cmd == 0xC7: # Set Tempo
-            # self.cmdarg & 0x??
-            if self.log: print("0x%04X   COMMAND      Command: 0xC7/0x47 (Set Tempo), Argument/Parameter: 0x%02X" % (self.offset - 2 - self.trk_off_start, self.cmdarg & 0x7F))
+        elif self.cmd == 0xC7: # Set tempo
+            # self.cmdarg & 0x7F
+            if self.log: print("(Set Tempo), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                # for whatever reason this needs to be done for both SH2 and SH1,
+                # even though the SH1 driver actually does ((x*2)+2) rather
+                # than ((x*2)+10), which I took from the SH2 driver
+                # I have no clue if this is needed with games other than SH1 and SH2
+                bpm = ((self.cmdarg & 0x7F) * 2) + 10
+
+                mpqn = 60000000 // bpm # micrsoseconds per quarter-note = microseconds per minute / beats per minute
+                self.midi[self.moff+0] = 0xFF
+                self.midi[self.moff+1] = 0x51
+                self.midi[self.moff+2] = 0x03
+                self.midi[self.moff+3] = (mpqn >> 16) & 0xFF
+                self.midi[self.moff+4] = (mpqn >>  8) & 0xFF
+                self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
+                self.moff += 6
 
         elif self.cmd == 0xC8: # Not sure.. calls SsUtVibrateOff ???
-            # self.cmdarg & 0x??
-            if self.log: print("0x%04X   COMMAND      Command: 0xC8/0x48 (Unknown, calls SsUtVibrateOff), Argument/Parameter: 0x%02X" % (self.offset - 2 - self.trk_off_start, self.cmdarg & 0x7F))
-
-        elif self.cmd == 0xC9: # Set Instrument
             # self.cmdarg & 0x7F
-            if self.log: print("0x%04X   COMMAND      Command: 0xC9/0x49 (Set Instrument), Argument/Parameter: 0x%02X" % (self.offset - 2 - self.trk_off_start, self.cmdarg & 0x7F))
+            if self.log: print("(Unknown, calls SsUtVibrateOff), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
+                self.moff += 1
+
+        elif self.cmd == 0xC9: # Set instrument
+            # self.cmdarg & 0x7F
+            if self.log: print("(Set Instrument), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                self.midi[self.moff+0] = 0xC0 | self.channel
+                self.midi[self.moff+1] = self.cmdarg & 0x7F
+                self.moff += 2
 
         elif self.cmd == 0xCA: # Note-off last note (reset running status)
-            if self.log: print("0x%04X   COMMAND      Command: 0xCA/0x4A (Note-off + reset running status)" % (self.offset - 1 - self.trk_off_start))
+            if self.log: print("(Note-off + reset running status)")
+            if self.convert:
+                self.midi[self.moff+0] = 0x80 | self.channel
+                self.midi[self.moff+1] = self.note
+                self.midi[self.moff+2] = 0
+                self.moff += 3
 
         elif self.cmd == 0xCB: # Note-off last note (keep running status)
-            if self.log: print("0x%04X   COMMAND      Command: 0xCB/0x4B (Note-off + keep running status)" % (self.offset - 1 - self.trk_off_start))
+            if self.log: print("(Note-off + keep running status)")
+            if self.convert:
+                self.midi[self.moff+0] = 0x80 | self.channel
+                self.midi[self.moff+1] = self.note
+                self.midi[self.moff+2] = 0
+                self.moff += 3
 
-        elif self.cmd == 0xCC: # Note-off all notes?
-            # self.cmdarg & 0x??
-            if self.log: print("0x%04X   COMMAND      Command: 0xCC/0x4C (Note-off all notes?), Argument/Parameter: 0x%02X" % (self.offset - 2 - self.trk_off_start, self.cmdarg & 0x7F))
+        elif self.cmd == 0xCC: # Set tempo; takes lower 7 bits only (added sometime after SH1)
+            # (self.cmdarg & 0x7F) & 0xFF
+            if self.log: print("(Set Tempo, BPM=0-127), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                bpm = self.cmdarg & 0x7F
+                mpqn = 60000000 // bpm # micrsoseconds per quarter-note = microseconds per minute / beats per minute
+                self,midi[self.moff+0] = 0xFF
+                self,midi[self.moff+1] = 0x51
+                self,midi[self.moff+2] = 0x03
+                self.midi[self.moff+3] = (mpqn >> 16) & 0xFF
+                self.midi[self.moff+4] = (mpqn >>  8) & 0xFF
+                self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
+                self.moff += 6
 
-        elif self.cmd == 0xDB: # Reverb send amount? (or at least affects reverb somehow it seems)
+        elif self.cmd == 0xCD: # Set tempo; takes lower 7 bits and sets MSB (added sometime after SH1)
+            # (self.cmdarg & 0x7F) | 0x80
+            if self.log: print("(Set Tempo, BPM=128-255), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                bpm = (self.cmdarg & 0x7F) | 0x80
+                mpqn = 60000000 // bpm # micrsoseconds per quarter-note = microseconds per minute / beats per minute
+                self,midi[self.moff+0] = 0xFF
+                self,midi[self.moff+1] = 0x51
+                self,midi[self.moff+2] = 0x03
+                self.midi[self.moff+3] = (mpqn >> 16) & 0xFF
+                self.midi[self.moff+4] = (mpqn >>  8) & 0xFF
+                self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
+                self.moff += 6
+
+        elif self.cmd == 0xCE: # Reserved, does nothing except read another byte (at least as of SH2)
             # self.cmdarg & 0x??
-            if self.log: print("0x%04X   COMMAND      Command: 0xDB/0x5B (Reverb Send Amount?), Argument/Parameter: 0x%02X" % (self.offset - 2 - self.trk_off_start, self.cmdarg & 0x7F))
+            if self.log: print("(Reserved), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
+                self.moff += 1
+
+        elif self.cmd == 0xDB: # Reverb send amount? (or may at least affect reverb somehow it seems)
+            # self.cmdarg & 0x??
+            if self.log: print("(Reverb Send Amount?), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
+                self.moff += 1
+
+        elif self.cmd == 0xF6: # Tune request?
+            # self.cmdarg & 0x??
+            if self.log: print("(Tune Request?), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
+                self.moff += 1
 
         elif self.cmd == 0xFF: # End of track
-            if self.cmdarg == 0xFF:
-                self.trk_ended = 1
-                # self.running = 0
-                if self.log:
-                    print     ("0x%04X   COMMAND      Command: 0xFF/0x7F (End of track)" % (self.offset - 2 - self.trk_off_start))
+            if self.log: print("(End of track)")
+            if self.convert:
+                self.midi[self.moff+0] = 0xFF
+                self.midi[self.moff+1] = 0x2F
+                self.midi[self.moff+2] = 0x00
+                self.moff += 3
 
         else:
-            if self.log: print("0x%04X   COMMAND      Command: 0x%02X/0x%02X (Unknown), Argument/Parameter: 0x%02X" % (self.offset-2-self.trk_off_start, self.cmd, self.cmd & 0x7F, self.cmdarg & 0x7F))
+            if self.log: print("(Unknown), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.convert:
+                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
+                self.moff += 1
 
     def read_note(self):
-        self.note = self.buf[self.offset]
+        self.note = self.buf[self.offset] & 0x7F
         self.velocity = self.buf[self.offset+1] & 0x7F
         self.running = self.buf[self.offset+1] & 0x80
         if self.log: 
@@ -144,14 +246,28 @@ class KDT:
                 print("0x%04X   NOTE-ON      Key: 0x%02X, Velocity: 0x%02X" % (self.offset - self.trk_off_start, self.note, self.velocity))
             else:
                 print("0x%04X   NOTE-OFF     Key: 0x%02X" % (self.offset - self.trk_off_start, self.note))
+        if self.convert:
+            if self.velocity:
+                self.midi[self.moff+0] = 0x90 | self.channel
+            else:
+                self.midi[self.moff+0] = 0x80 | self.channel
+            self.midi[self.moff+1] = self.note
+            self.midi[self.moff+2] = self.velocity
+            self.moff += 3
         self.offset += 2
 
     def read_delta_time(self):
         if self.log: print("0x%04X   DELTA-TIME   Time: " % (self.offset - self.trk_off_start), end="")
+        if self.convert:
+            self.midi[self.moff] = self.buf[self.offset]
+            self.moff += 1
         self.time = self.buf[self.offset] & 0x7F
         more = self.buf[self.offset] & 0x80
         self.offset += 1
         while more:
+            if self.convert:
+                self.midi[self.moff] = self.buf[self.offset]
+                self.moff += 1
             self.time <<= 7
             self.time |= self.buf[self.offset] & 0x7F
             more = self.buf[self.offset] & 0x80
@@ -160,16 +276,24 @@ class KDT:
         self.running = 1
 
     def read_seq(self):
-        if self.running: # Delta-time (time since last event)
-            if self.buf[self.offset] & 0x80: # Command
+        if self.running:
+            if self.buf[self.offset] & 0x80:
                 self.read_cmd()
-            else: # Note/velocity pair(s)
+            else:
                 self.read_note()
+
+            # instead of having delta-times of 0 between events, KDT1 uses the
+            # MSB in the command parameter / note velocity to save some bytes
+            if self.convert:
+                if self.running:
+                    if self.offset < self.trk_off_end:
+                        self.midi[self.moff] = 0
+                        self.moff += 1
         else:
             self.read_delta_time()
 
     def find_cmd(self, cmd):
-        cmd |= 0x80 # MSB is always set in commands
+        cmd |= 0x80
 
         while self.offset < self.trk_off_end:
             if self.running:
@@ -185,21 +309,18 @@ def get_u16_le(buf, offset=0):
 def get_u32_le(buf, offset=0):
     return struct.unpack("<I", buf[offset:offset+4])[0]
 
+def put_u16_be(n):
+    return struct.pack(">H", n & 0xFFFF)
+
+def put_u32_be(n):
+    return struct.pack(">I", n & 0xFFFFFFFF)
+
 def isnum(n):
     try:
         int(n)
     except ValueError:
         return False
     return True
-
-
-
-
-
-
-
-
-
 
 def print_initial_track_volumes(kdt):
     basename = os.path.basename(kdt.path)
@@ -268,7 +389,7 @@ def demute_and_isolate_all_tracks_to_separate_files(kdt):
 
             if kdt.find_cmd(0x87): # seek to first 0x87 command byte (if present)
                 if trknum < 2 or trknum == filenum: # always demute tracks 0 and 1 (special global tracks)
-                    out_buf[kdt.offset+1] |= 0x6E # demute (ALL initially demuted tracks EXCEPT the second track of both T and T2 are initialized to volume = 0x6E)
+                    out_buf[kdt.offset+1] |= 0x6E # demute (ALL initially demuted tracks in SH1 EXCEPT the second track of both T and T2 are initialized to volume = 0x6E)
                 else:
                     out_buf[kdt.offset+1] &= 0x80 # isolate; i.e. mute everything except the track for the current file (and keep MSB intact)
 
@@ -326,6 +447,33 @@ def demute_and_isolate_specified_tracks_to_single_file(kdt, demute_args):
     with open(out_path, "wb") as out:
         out.write(out_buf)
 
+def kdt2midi(path):
+    kdt = KDT(path, convert=True)
+
+    kdt.midi[0x00:0x04] = b"MThd"
+    kdt.midi[0x04:0x08] = put_u32_be(6) # mthd size
+    kdt.midi[0x08:0x0A] = put_u16_be(1) # midi type
+    kdt.midi[0x0A:0x0C] = put_u16_be(kdt.tracks)
+    kdt.midi[0x0C:0x0E] = put_u16_be(kdt.tickdiv)
+    kdt.moff = 0x0E
+
+    for trknum in range(kdt.tracks):
+        kdt.set_track(trknum)
+
+        mtrk_off_start = kdt.moff
+
+        kdt.midi[kdt.moff:kdt.moff+8] = b"MTrk" + put_u32_be(0) # id + size (tmp)
+
+        kdt.moff += 8
+
+        while kdt.offset < kdt.trk_off_end:
+            kdt.read_seq()
+
+        kdt.midi[mtrk_off_start+4:mtrk_off_start+8] = put_u32_be( kdt.moff - (mtrk_off_start + 8) )
+
+    with open(os.path.splitext(path)[0] + ".midi", "wb") as midi:
+        midi.write(kdt.midi[0:kdt.moff])
+
 def main(argc=len(sys.argv), argv=sys.argv):
     path = os.path.realpath(argv[1])
 
@@ -339,7 +487,11 @@ def main(argc=len(sys.argv), argv=sys.argv):
 
     # demute_and_isolate_all_tracks_to_separate_files(KDT(path))
 
-    demute_and_isolate_specified_tracks_to_single_file(KDT(path), argv[2:])
+    # demute_and_isolate_specified_tracks_to_single_file(KDT(path), argv[2:])
+
+    # print_events(KDT(path))
+
+    kdt2midi(path)
 
     return 0
 
