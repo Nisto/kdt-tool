@@ -1,5 +1,9 @@
 # kdt-tool
-General-purpose tool for Konami's sequenced music format "KDT1".
+General-purpose tool for Konami's sequenced music format "KDT1". Functions include:
+- MIDI converter: converts KDT to MIDI
+- Event parser: prints sequence events as human-readable text
+- Track splitter: demutes and isolates all tracks to separate files, or specified tracks to a single file
+- Some miscellaneous minor stuff
 
 ### Prerequisites
 All you need is Python 3. The tool was developed under Python 3.4.2 and has NOT been tested with any other version.
