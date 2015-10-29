@@ -14,6 +14,23 @@ KDT_OFF_TRACKS   = 0x0C
 KDT_OFF_UNUSED2  = 0x0E
 KDT_OFF_SIZETBL  = 0x10
 
+# For a later point in time maybe?
+# KDT_EVT_UNK0          = 0x86
+# KDT_EVT_SET_CHAN_VOL  = 0x87
+# KDT_EVT_SET_PAN       = 0x8A
+# KDT_EVT_SET_CTRL_VOL  = 0x8B
+# KDT_EVT_SET_CHAN      = 0xC6
+# KDT_EVT_SET_TEMPO0    = 0xC7
+# KDT_EVT_UNK1          = 0xC8
+# KDT_EVT_SET_PROGRAM   = 0xC9
+# KDT_EVT_NOTE_OFF_STOP = 0xCA
+# KDT_EVT_NOTE_OFF_CONT = 0xCB
+# KDT_EVT_SET_TEMPO1    = 0xCC
+# KDT_EVT_SET_TEMPO2    = 0xCD
+# KDT_EVT_RESERVED      = 0xCE
+# KDT_EVT_UNK2          = 0xDB
+# KDT_EVT_END_OF_TRACK  = 0xFF
+
 class KDT:
     def __init__(self, path, log=False, convert=False):
         self.path = path
@@ -180,9 +197,9 @@ class KDT:
             if self.convert:
                 bpm = self.cmdarg & 0x7F
                 mpqn = 60000000 // bpm # micrsoseconds per quarter-note = microseconds per minute / beats per minute
-                self,midi[self.moff+0] = 0xFF
-                self,midi[self.moff+1] = 0x51
-                self,midi[self.moff+2] = 0x03
+                self.midi[self.moff+0] = 0xFF
+                self.midi[self.moff+1] = 0x51
+                self.midi[self.moff+2] = 0x03
                 self.midi[self.moff+3] = (mpqn >> 16) & 0xFF
                 self.midi[self.moff+4] = (mpqn >>  8) & 0xFF
                 self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
@@ -194,9 +211,9 @@ class KDT:
             if self.convert:
                 bpm = (self.cmdarg & 0x7F) | 0x80
                 mpqn = 60000000 // bpm # micrsoseconds per quarter-note = microseconds per minute / beats per minute
-                self,midi[self.moff+0] = 0xFF
-                self,midi[self.moff+1] = 0x51
-                self,midi[self.moff+2] = 0x03
+                self.midi[self.moff+0] = 0xFF
+                self.midi[self.moff+1] = 0x51
+                self.midi[self.moff+2] = 0x03
                 self.midi[self.moff+3] = (mpqn >> 16) & 0xFF
                 self.midi[self.moff+4] = (mpqn >>  8) & 0xFF
                 self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
