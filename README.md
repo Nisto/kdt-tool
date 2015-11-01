@@ -19,7 +19,7 @@ The script currently takes no arguments other than a filepath, as it is currentl
 Command-line example: `kdt-tool.py` `FOO.KDT`
 
 <br>
-`demute_and_isolate_specified_tracks_to_single_file` takes two arguments (must be called via a command-line):
+`demute_and_isolate_specified_tracks_to_single_file` takes two arguments (command-line only):
 - the path to a KDT1 file
 - one or more arguments with tracks to demute and isolate
 
