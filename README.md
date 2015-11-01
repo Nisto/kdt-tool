@@ -13,6 +13,19 @@ Simply download kdt-tool.py, then (at least if you're on Windows and installed P
 
 The script currently takes no arguments other than a filepath, as it is currently set up only to convert, with ease of use in mind. So for now, you will have to hard-code calls to the other available functions if you so desire to use them.
 
+`demute_and_isolate_all_tracks_to_separate_files` takes one argument (drag-n-drop possible):
+- the path to a KDT1 file
+
+Command-line example: kdt-tool.py FOO.KDT
+
+<br>
+
+`demute_and_isolate_specified_tracks_to_single_file` takes two arguments (must be called via a command-line):
+- the path to a KDT1 file
+- one or more arguments with tracks to demute and isolate
+
+Command-line example: kdt-tool.py FOO.KDT 2 4 6-8 (combines tracks 2, 4, 6, 7 and 8)
+
 ### Known issues
 MIDI conversion is not perfect, but it will get you notes, timing, track configuration and the most basic commands converted.
 
