@@ -251,7 +251,7 @@ class KDT:
 
         else:
             if self.log: print("(Unknown), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
-            if self.convert:
+            if self.convert: # Remaining commands are probably a subset of Sony's SEQp or SCEIMidi format
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
