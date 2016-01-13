@@ -98,13 +98,14 @@ class KDT:
 
         # Might be worth looking into:
         # http://web.archive.org/web/20151016183420/http://wiki.spinout182.com/w/Music_Sequences
+        # https://sites.google.com/site/messiaen64/parsed-music-files
 
         if self.cmd == 0x86: # Sets reverb type (hall, room, etc.) on first call, volume/depth on next call (e.g. 86[tt], 86[vv]) ... I think?
             # self.cmdarg & 0x??
             if self.log: print("(Set Reverb Type), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
             if self.convert:
-                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
-                self.moff += 1
+                self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
+                self.moff += 4
 
         elif self.cmd == 0x87: # Set main / channel volume
             # self.cmdarg & 0x7F
@@ -138,8 +139,8 @@ class KDT:
             if self.log: print("(Set Channel), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x0F))
             if self.convert:
                 self.channel = self.cmdarg & 0x0F
-                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
-                self.moff += 1
+                self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
+                self.moff += 4
 
         elif self.cmd == 0xC7: # Set tempo
             # self.cmdarg & 0x7F
@@ -164,8 +165,8 @@ class KDT:
             # self.cmdarg & 0x7F
             if self.log: print("(Unknown, calls SsUtVibrateOff), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
             if self.convert:
-                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
-                self.moff += 1
+                self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
+                self.moff += 4
 
         elif self.cmd == 0xC9: # Set instrument
             # self.cmdarg & 0x7F
@@ -223,22 +224,22 @@ class KDT:
             # self.cmdarg & 0x??
             if self.log: print("(Reserved), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
             if self.convert:
-                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
-                self.moff += 1
+                self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
+                self.moff += 4
 
         elif self.cmd == 0xDB: # Reverb send amount? (or may at least affect reverb somehow it seems)
             # self.cmdarg & 0x??
             if self.log: print("(Reverb Send Amount?), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
             if self.convert:
-                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
-                self.moff += 1
+                self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
+                self.moff += 4
 
         elif self.cmd == 0xF6: # Tune request?
             # self.cmdarg & 0x??
             if self.log: print("(Tune Request?), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
             if self.convert:
-                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
-                self.moff += 1
+                self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
+                self.moff += 4
 
         elif self.cmd == 0xFF: # End of track
             if self.log: print("(End of track)")
@@ -251,8 +252,8 @@ class KDT:
         else:
             if self.log: print("(Unknown), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
             if self.convert:
-                self.midi[self.moff+0] = 0xFD # reserved MIDI command (do nothing)
-                self.moff += 1
+                self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
+                self.moff += 4
 
     def read_note(self):
         self.note = self.buf[self.offset] & 0x7F
@@ -293,7 +294,9 @@ class KDT:
         self.running = 1
 
     def read_seq(self):
-        if self.running:
+        if not self.running:
+            self.read_delta_time()
+        else:
             if self.buf[self.offset] & 0x80:
                 self.read_cmd()
             else:
@@ -306,8 +309,6 @@ class KDT:
                     if self.offset < self.trk_off_end:
                         self.midi[self.moff] = 0
                         self.moff += 1
-        else:
-            self.read_delta_time()
 
     def find_cmd(self, cmd):
         cmd |= 0x80
@@ -479,8 +480,16 @@ def kdt2midi(path):
 
         mtrk_off_start = kdt.moff
 
-        kdt.midi[kdt.moff:kdt.moff+8] = b"MTrk" + put_u32_be(0) # id + size (tmp)
-
+        kdt.midi[kdt.moff:kdt.moff+4] = b"MTrk" # id
+        kdt.moff += 4
+        kdt.midi[kdt.moff:kdt.moff+4] = put_u32_be(0) # size (tmp)
+        kdt.moff += 4
+        kdt.midi[kdt.moff+0] = 0x00 # delta time
+        kdt.midi[kdt.moff+1] = 0xFF # meta event
+        kdt.midi[kdt.moff+2] = 0x03 # track/seq name
+        kdt.midi[kdt.moff+3] = 0x08 # size
+        kdt.moff += 4
+        kdt.midi[kdt.moff:kdt.moff+8] = bytes("Track %02d" % trknum, encoding="ascii")
         kdt.moff += 8
 
         while kdt.offset < kdt.trk_off_end:
