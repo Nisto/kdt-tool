@@ -4,6 +4,7 @@
 import os
 import sys
 import struct
+#import math
 
 KDT_HEADER_SIZE  = 0x10
 KDT_OFF_ID       = 0x00
@@ -14,22 +15,19 @@ KDT_OFF_TRACKS   = 0x0C
 KDT_OFF_UNUSED2  = 0x0E
 KDT_OFF_SIZETBL  = 0x10
 
-# For a later point in time maybe?
-# KDT_EVT_UNK0          = 0x86
-# KDT_EVT_SET_CHAN_VOL  = 0x87
-# KDT_EVT_SET_PAN       = 0x8A
-# KDT_EVT_SET_CTRL_VOL  = 0x8B
-# KDT_EVT_SET_CHAN      = 0xC6
-# KDT_EVT_SET_TEMPO0    = 0xC7
-# KDT_EVT_UNK1          = 0xC8
-# KDT_EVT_SET_PROGRAM   = 0xC9
-# KDT_EVT_NOTE_OFF_STOP = 0xCA
-# KDT_EVT_NOTE_OFF_CONT = 0xCB
-# KDT_EVT_SET_TEMPO1    = 0xCC
-# KDT_EVT_SET_TEMPO2    = 0xCD
-# KDT_EVT_RESERVED      = 0xCE
-# KDT_EVT_UNK2          = 0xDB
-# KDT_EVT_END_OF_TRACK  = 0xFF
+# KDT_EVT_SET_CHAN_VOL   = 0x87
+# KDT_EVT_SET_PANNING    = 0x8A
+# KDT_EVT_SET_CTRL_VOL   = 0x8B
+# KDT_EVT_SET_CHANNEL    = 0xC6
+# KDT_EVT_SET_TEMPO      = 0xC7
+# KDT_EVT_UNK            = 0xC8
+# KDT_EVT_SET_INSTRUMENT = 0xC9
+# KDT_EVT_NOTE_OFF_STOP  = 0xCA
+# KDT_EVT_NOTE_OFF_CONT  = 0xCB
+# KDT_EVT_SET_TEMPO_LO   = 0xCC
+# KDT_EVT_SET_TEMPO_HI   = 0xCD
+# KDT_EVT_RESERVED       = 0xCE
+# KDT_EVT_END_OF_TRACK   = 0xFF
 
 class KDT:
     def __init__(self, path, log=False, convert=False):
@@ -80,79 +78,76 @@ class KDT:
         self.offset        = self.trk_off_start
 
     def read_cmd(self):
-        self.cmd = self.buf[self.offset]
+        cmd = self.buf[self.offset]
 
-        if self.log: print("0x%04X   COMMAND      Command: 0x%02X/0x%02X " % (self.offset - self.trk_off_start, self.cmd, self.cmd & 0x7F), end="")
+        if self.log: print("0x%04X   COMMAND      Command: 0x%02X/0x%02X " % (self.offset - self.trk_off_start, cmd, cmd & 0x7F), end="")
 
-        # only non-0xCA/0xCB commands takes an argument/parameter
-        if self.cmd == 0xCA:
+        # all commands except 0xCA and 0xCB take a parameter
+        if cmd == 0xCA:
             self.running = 0
             self.offset += 1
-        elif self.cmd == 0xCB:
+        elif cmd == 0xCB:
             self.running = 1
             self.offset += 1
         else:
-            self.cmdarg = self.buf[self.offset+1]
-            self.running = self.cmdarg & 0x80
+            param = self.buf[self.offset+1]
+            self.running = param & 0x80
             self.offset += 2
 
         # Might be worth looking into:
         # http://web.archive.org/web/20151016183420/http://wiki.spinout182.com/w/Music_Sequences
         # https://sites.google.com/site/messiaen64/parsed-music-files
 
-        if self.cmd == 0x86: # Sets reverb type (hall, room, etc.) on first call, volume/depth on next call (e.g. 86[tt], 86[vv]) ... I think?
-            # self.cmdarg & 0x??
-            if self.log: print("(Set Reverb Type), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        if cmd == 0x86: # Sets reverb type (hall, room, etc.) on first call, volume/depth on next call (e.g. 86[tt], 86[vv]) ... I think?
+            # param & 0x??
+            if self.log: print("(Set Reverb Type), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
-        elif self.cmd == 0x87: # Set main / channel volume
-            # self.cmdarg & 0x7F
-            if self.log: print("(Set Main/Channel Volume), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        elif cmd == 0x87: # Set main / channel volume
+            if self.log: print("(Set Main/Channel Volume), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff+0] = 0xB0 | self.channel
                 self.midi[self.moff+1] = 0x07
-                self.midi[self.moff+2] = self.cmdarg & 0x7F
+                self.midi[self.moff+2] = param & 0x7F
                 self.moff += 3
 
-        elif self.cmd == 0x8A: # Set panning
-            # self.cmdarg & 0x7F
-            if self.log: print("(Set Panning), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        elif cmd == 0x8A: # Set panning
+            if self.log: print("(Set Panning), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff+0] = 0xB0 | self.channel
                 self.midi[self.moff+1] = 0x0A
-                self.midi[self.moff+2] = self.cmdarg & 0x7F
+                self.midi[self.moff+2] = param & 0x7F
                 self.moff += 3
 
-        elif self.cmd == 0x8B: # Set controller volume ("expression is a percentage of the channel volume"?)
-            # self.cmdarg & 0x7F
-            if self.log: print("(Set Controller Volume), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        elif cmd == 0x8B: # Set controller volume ("expression is a percentage of the channel volume"?)
+            if self.log: print("(Set Controller Volume), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff+0] = 0xB0 | self.channel
                 self.midi[self.moff+1] = 0x0B
-                self.midi[self.moff+2] = self.cmdarg & 0x7F
+                self.midi[self.moff+2] = param & 0x7F
                 self.moff += 3
 
-        elif self.cmd == 0xC6: # Set channel
-            # self.cmdarg & 0x0F
-            if self.log: print("(Set Channel), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x0F))
+        elif cmd == 0xC6: # Set channel
+            if self.log: print("(Set Channel), Argument/Parameter: 0x%02X" % (param & 0x0F))
             if self.convert:
-                self.channel = self.cmdarg & 0x0F
+                self.channel = param & 0x0F
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
-        elif self.cmd == 0xC7: # Set tempo
-            # self.cmdarg & 0x7F
-            if self.log: print("(Set Tempo), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        elif cmd == 0xC7: # Set tempo
+            if self.log: print("(Set Tempo), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
-                # for whatever reason this needs to be done for both SH2 and SH1,
-                # even though the SH1 driver actually does ((x*2)+2) rather
-                # than ((x*2)+10), which I took from the SH2 driver
-                # I have no clue if this is needed with games other than SH1 and SH2
-                bpm = ((self.cmdarg & 0x7F) * 2) + 10
+                # this equation is taken from the Silent Hill 2 driver;
+                # Suikoden 2 and Silent Hill 1 both add by 2 instead of 10;
+                # I don't know why, or what it represents, but the latter gives
+                # a more correct result -- change if needed, and please report
+                bpm = ((param & 0x7F) * 2) + 10
 
-                mpqn = 60000000 // bpm # micrsoseconds per quarter-note = microseconds per minute / beats per minute
+                # micrsoseconds per quarter-note = microseconds per minute / beats per minute
+                mpqn = 60000000 // bpm
+
                 self.midi[self.moff+0] = 0xFF
                 self.midi[self.moff+1] = 0x51
                 self.midi[self.moff+2] = 0x03
@@ -161,22 +156,21 @@ class KDT:
                 self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
                 self.moff += 6
 
-        elif self.cmd == 0xC8: # Not sure.. calls SsUtVibrateOff ???
-            # self.cmdarg & 0x7F
-            if self.log: print("(Unknown, calls SsUtVibrateOff), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        elif cmd == 0xC8: # Not sure.. calls SsUtVibrateOff ???
+            # param & 0x7F
+            if self.log: print("(Unknown, calls SsUtVibrateOff), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
-        elif self.cmd == 0xC9: # Set instrument
-            # self.cmdarg & 0x7F
-            if self.log: print("(Set Instrument), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        elif cmd == 0xC9: # Set instrument
+            if self.log: print("(Set Instrument), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff+0] = 0xC0 | self.channel
-                self.midi[self.moff+1] = self.cmdarg & 0x7F
+                self.midi[self.moff+1] = param & 0x7F
                 self.moff += 2
 
-        elif self.cmd == 0xCA: # Note-off last note (reset running status)
+        elif cmd == 0xCA: # Note-off last note (reset running status)
             if self.log: print("(Note-off + reset running status)")
             if self.convert:
                 self.midi[self.moff+0] = 0x80 | self.channel
@@ -184,7 +178,7 @@ class KDT:
                 self.midi[self.moff+2] = 0
                 self.moff += 3
 
-        elif self.cmd == 0xCB: # Note-off last note (keep running status)
+        elif cmd == 0xCB: # Note-off last note (keep running status)
             if self.log: print("(Note-off + keep running status)")
             if self.convert:
                 self.midi[self.moff+0] = 0x80 | self.channel
@@ -192,12 +186,12 @@ class KDT:
                 self.midi[self.moff+2] = 0
                 self.moff += 3
 
-        elif self.cmd == 0xCC: # Set tempo; takes lower 7 bits only (added sometime after SH1)
-            # (self.cmdarg & 0x7F) & 0xFF
-            if self.log: print("(Set Tempo, BPM=0-127), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        elif cmd == 0xCC: # Set tempo, low (added between 1999-2001)
+            # (param & 0x7F) & 0xFF
+            if self.log: print("(Set Tempo, BPM=0-127), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
-                bpm = self.cmdarg & 0x7F
-                mpqn = 60000000 // bpm # micrsoseconds per quarter-note = microseconds per minute / beats per minute
+                bpm = param & 0x7F
+                mpqn = 60000000 // bpm
                 self.midi[self.moff+0] = 0xFF
                 self.midi[self.moff+1] = 0x51
                 self.midi[self.moff+2] = 0x03
@@ -206,12 +200,12 @@ class KDT:
                 self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
                 self.moff += 6
 
-        elif self.cmd == 0xCD: # Set tempo; takes lower 7 bits and sets MSB (added sometime after SH1)
-            # (self.cmdarg & 0x7F) | 0x80
-            if self.log: print("(Set Tempo, BPM=128-255), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        elif cmd == 0xCD: # Set tempo, high (added between 1999-2001)
+            # (param & 0x7F) | 0x80
+            if self.log: print("(Set Tempo, BPM=128-255), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
-                bpm = (self.cmdarg & 0x7F) | 0x80
-                mpqn = 60000000 // bpm # micrsoseconds per quarter-note = microseconds per minute / beats per minute
+                bpm = (param & 0x7F) | 0x80
+                mpqn = 60000000 // bpm
                 self.midi[self.moff+0] = 0xFF
                 self.midi[self.moff+1] = 0x51
                 self.midi[self.moff+2] = 0x03
@@ -220,28 +214,27 @@ class KDT:
                 self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
                 self.moff += 6
 
-        elif self.cmd == 0xCE: # Reserved, does nothing except read another byte (at least as of SH2)
-            # self.cmdarg & 0x??
-            if self.log: print("(Reserved), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        elif cmd == 0xCE: # Reserved as of 2002 (added between 1999-2001)
+            if self.log: print("(Reserved), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
-        elif self.cmd == 0xDB: # Reverb send amount? (or may at least affect reverb somehow it seems)
-            # self.cmdarg & 0x??
-            if self.log: print("(Reverb Send Amount?), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        elif cmd == 0xDB: # Reverb send amount? (or may at least affect reverb somehow it seems)
+            # param & 0x??
+            if self.log: print("(Reverb Send Amount?), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
-        elif self.cmd == 0xF6: # Tune request?
-            # self.cmdarg & 0x??
-            if self.log: print("(Tune Request?), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+        elif cmd == 0xF6: # Tune request?
+            # param & 0x??
+            if self.log: print("(Tune Request?), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
-        elif self.cmd == 0xFF: # End of track
+        elif cmd == 0xFF: # End of track
             if self.log: print("(End of track)")
             if self.convert:
                 self.midi[self.moff+0] = 0xFF
@@ -250,7 +243,7 @@ class KDT:
                 self.moff += 3
 
         else:
-            if self.log: print("(Unknown), Argument/Parameter: 0x%02X" % (self.cmdarg & 0x7F))
+            if self.log: print("(Unknown), Argument/Parameter: 0x%02X" % (param & 0x7F))
             if self.convert: # Remaining commands are probably a subset of Sony's SEQp or SCEIMidi format
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
@@ -265,12 +258,10 @@ class KDT:
             else:
                 print("0x%04X   NOTE-OFF     Key: 0x%02X" % (self.offset - self.trk_off_start, self.note))
         if self.convert:
-            if self.velocity:
-                self.midi[self.moff+0] = 0x90 | self.channel
-            else:
-                self.midi[self.moff+0] = 0x80 | self.channel
+            self.midi[self.moff+0] = (0x90 if self.velocity else 0x80) | self.channel
             self.midi[self.moff+1] = self.note
             self.midi[self.moff+2] = self.velocity
+            # self.midi[self.moff+2] = int(127.0 * math.sqrt(self.velocity / 127.0))
             self.moff += 3
         self.offset += 2
 
@@ -402,14 +393,15 @@ def demute_and_isolate_all_tracks_to_separate_files(kdt):
         out_buf = kdt.buf
 
         for trknum in range(kdt.tracks):
-
-            kdt.set_track(trknum)
-
-            if kdt.find_cmd(0x87): # seek to first 0x87 command byte (if present)
-                if trknum < 2 or trknum == filenum: # always demute tracks 0 and 1 (special global tracks)
-                    out_buf[kdt.offset+1] |= 0x6E # demute (ALL initially demuted tracks in SH1 EXCEPT the second track of both T and T2 are initialized to volume = 0x6E)
-                else:
-                    out_buf[kdt.offset+1] &= 0x80 # isolate; i.e. mute everything except the track for the current file (and keep MSB intact)
+            for i in range(2):
+                kdt.set_track(trknum)
+                cmd = 0x8B if i else 0x87 # find 0x87 (main/channel vol) on first iteration, then 0x8B (controller vol)
+                if kdt.find_cmd(cmd): # seek to first 0x87 command byte (if present)
+                    if trknum < 2 or trknum == filenum: # always demute tracks 0 and 1 (special global tracks)
+                        if not out_buf[kdt.offset+1] & 0x7F: # use the original volume if not muted
+                            out_buf[kdt.offset+1] |= 0x6E # demute (ALL initially demuted tracks in SH1 EXCEPT the second track of both T and T2 are initialized to volume = 0x6E)
+                    else:
+                        out_buf[kdt.offset+1] &= 0x80 # isolate; i.e. mute everything except the track for the current file (and keep MSB intact)
 
         out_path = os.path.join(dir, "%s (track %02d).KDT" % (basename, filenum))
         with open(out_path, "wb") as out:
@@ -442,12 +434,15 @@ def demute_and_isolate_specified_tracks_to_single_file(kdt, demute_args):
     out_buf = kdt.buf
 
     for trknum in range(kdt.tracks):
-        kdt.set_track(trknum)
-        if kdt.find_cmd(0x87):
-            if trknum < 2 or trknum in demute:
-                out_buf[kdt.offset+1] |= 0x6E
-            else:
-                out_buf[kdt.offset+1] &= 0x80
+        for i in range(2):
+            kdt.set_track(trknum)
+            cmd = 0x8B if i else 0x87
+            if kdt.find_cmd(cmd):
+                if trknum < 2 or trknum in demute:
+                    if not out_buf[kdt.offset+1] & 0x7F:
+                        out_buf[kdt.offset+1] |= 0x6E
+                else:
+                    out_buf[kdt.offset+1] &= 0x80
 
     dir = os.path.dirname(kdt.path)
 
