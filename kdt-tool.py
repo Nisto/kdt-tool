@@ -73,9 +73,9 @@ class KDT:
         self.trk_size      = self.trk_size_tbl[trknum]
         self.trk_off_start = self.trk_off_tbl[trknum]
         self.trk_off_end   = self.trk_off_start + self.trk_size
-        self.running       = 0 # sequence running status (expect delta-time when zero - note or command otherwise)
-        self.channel       = 0
         self.offset        = self.trk_off_start
+        self.channel       = 0
+        self.running       = 0 # sequence running status (expect delta-time when zero - note or command otherwise)
 
     def read_cmd(self):
         cmd = self.buf[self.offset]
@@ -100,13 +100,13 @@ class KDT:
 
         if cmd == 0x86: # Sets reverb type (hall, room, etc.) on first call, volume/depth on next call (e.g. 86[tt], 86[vv]) ... I think?
             # param & 0x??
-            if self.log: print("(Set Reverb Type), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Set Reverb Type), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
         elif cmd == 0x87: # Set main / channel volume
-            if self.log: print("(Set Main/Channel Volume), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Set Main/Channel Volume), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff+0] = 0xB0 | self.channel
                 self.midi[self.moff+1] = 0x07
@@ -114,7 +114,7 @@ class KDT:
                 self.moff += 3
 
         elif cmd == 0x8A: # Set panning
-            if self.log: print("(Set Panning), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Set Panning), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff+0] = 0xB0 | self.channel
                 self.midi[self.moff+1] = 0x0A
@@ -122,7 +122,7 @@ class KDT:
                 self.moff += 3
 
         elif cmd == 0x8B: # Set controller volume ("expression is a percentage of the channel volume"?)
-            if self.log: print("(Set Controller Volume), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Set Controller Volume), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff+0] = 0xB0 | self.channel
                 self.midi[self.moff+1] = 0x0B
@@ -130,19 +130,20 @@ class KDT:
                 self.moff += 3
 
         elif cmd == 0xC6: # Set channel
-            if self.log: print("(Set Channel), Argument/Parameter: 0x%02X" % (param & 0x0F))
+            if self.log: print("(Set Channel), Parameter: 0x%02X" % (param & 0x0F))
             if self.convert:
                 self.channel = param & 0x0F
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
         elif cmd == 0xC7: # Set tempo
-            if self.log: print("(Set Tempo), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Set Tempo), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 # this equation is taken from the Silent Hill 2 driver;
                 # Suikoden 2 and Silent Hill 1 both add by 2 instead of 10;
-                # I don't know why, or what it represents, but the latter gives
-                # a more correct result -- change if needed, and please report
+                # I don't know why, or what it represents, but adding by 10
+                # seems to give a more accurate result for ALL games;
+                # change if needed, and please report
                 bpm = ((param & 0x7F) * 2) + 10
 
                 # micrsoseconds per quarter-note = microseconds per minute / beats per minute
@@ -158,13 +159,13 @@ class KDT:
 
         elif cmd == 0xC8: # Not sure.. calls SsUtVibrateOff ???
             # param & 0x7F
-            if self.log: print("(Unknown, calls SsUtVibrateOff), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Unknown, calls SsUtVibrateOff), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
         elif cmd == 0xC9: # Set instrument
-            if self.log: print("(Set Instrument), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Set Instrument), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff+0] = 0xC0 | self.channel
                 self.midi[self.moff+1] = param & 0x7F
@@ -188,7 +189,7 @@ class KDT:
 
         elif cmd == 0xCC: # Set tempo, low (added between 1999-2001)
             # (param & 0x7F) & 0xFF
-            if self.log: print("(Set Tempo, BPM=0-127), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Set Tempo, BPM=0-127), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 bpm = param & 0x7F
                 mpqn = 60000000 // bpm
@@ -202,7 +203,7 @@ class KDT:
 
         elif cmd == 0xCD: # Set tempo, high (added between 1999-2001)
             # (param & 0x7F) | 0x80
-            if self.log: print("(Set Tempo, BPM=128-255), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Set Tempo, BPM=128-255), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 bpm = (param & 0x7F) | 0x80
                 mpqn = 60000000 // bpm
@@ -214,22 +215,22 @@ class KDT:
                 self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
                 self.moff += 6
 
-        elif cmd == 0xCE: # Reserved as of 2002 (added between 1999-2001)
-            if self.log: print("(Reserved), Argument/Parameter: 0x%02X" % (param & 0x7F))
+        elif cmd == 0xCE: # Reserved (does nothing) as of 2002 (added between 1999-2001)
+            if self.log: print("(Reserved), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
         elif cmd == 0xDB: # Reverb send amount? (or may at least affect reverb somehow it seems)
             # param & 0x??
-            if self.log: print("(Reverb Send Amount?), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Reverb Send Amount?), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
         elif cmd == 0xF6: # Tune request?
             # param & 0x??
-            if self.log: print("(Tune Request?), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Tune Request?), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
@@ -243,7 +244,7 @@ class KDT:
                 self.moff += 3
 
         else:
-            if self.log: print("(Unknown), Argument/Parameter: 0x%02X" % (param & 0x7F))
+            if self.log: print("(Unknown), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert: # Remaining commands are probably a subset of Sony's SEQp or SCEIMidi format
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
@@ -331,44 +332,44 @@ def isnum(n):
         return False
     return True
 
+def print_bgm_type(kdt):
+    dynamic = False
+    for trknum in range(2, kdt.tracks): # skip tracks 0 and 1
+        for cmd in [0x87, 0x8B]:
+            kdt.set_track(trknum)
+            if kdt.find_cmd(cmd):
+                volume = kdt.buf[kdt.offset+1] & 0x7F
+                if volume == 0:
+                    dynamic = True
+    if dynamic:
+        print("Dynamic: %s" % os.path.basename(kdt.path))
+    else:
+        print("Standard: %s" % os.path.basename(kdt.path))
+
 def print_initial_track_volumes(kdt):
     basename = os.path.basename(kdt.path)
     for trknum in range(kdt.tracks):
-        kdt.set_track(trknum)
-        if kdt.find_cmd(0x87):
-            volume = kdt.buf[kdt.offset+1] & 0x7F
-            print("%s: track %02d volume = 0x%02X" % (basename, trknum, volume))
-
-def print_bgm_type(kdt):
-    basename = os.path.basename(kdt.path)
-    dynamic = False
-    for trknum in range(2, kdt.tracks): # skip tracks 0 and 1
-        kdt.set_track(trknum)
-        if kdt.find_cmd(0x87):
-            volume = kdt.buf[kdt.offset+1] & 0x7F
-            if volume == 0:
-                dynamic = True
-    if dynamic:
-        print("Dynamic: %s" % basename)
-    else:
-        print("Standard: %s" % basename)
+        for cmd in [0x87, 0x8B]:
+            kdt.set_track(trknum)
+            if kdt.find_cmd(cmd):
+                voltype = "main" if cmd == 0x87 else "ctrl"
+                volume = kdt.buf[kdt.offset+1] & 0x7F
+                print("%s: track %02d %s volume = 0x%02X" % (basename, trknum, voltype, volume))
 
 def print_note_event_counts(kdt):
+    basename = os.path.basename(kdt.path)
     for trknum in range(2, kdt.tracks): # skip tracks 0 and 1
-
         events = 0
-
         kdt.set_track(trknum)
-
         while kdt.offset < kdt.trk_off_end:
             if kdt.running:
                 if kdt.buf[kdt.offset] < 0x80:
                     events += 1
             kdt.read_seq()
 
-        # print("%s: %d note events in track %02d" % (kdt.path, events, trknum))
-        if events == 0:
-            print("%s: no note events in track %02d" % (kdt.path, trknum))
+        print("%s: %d note events in track %02d" % (basename, events, trknum))
+        # if events == 0:
+        #     print("%s: no note events in track %02d" % (basename, trknum))
 
 # Prints all sequence events as human-readable lines for each track
 def print_events(kdt):
@@ -384,59 +385,73 @@ def print_events(kdt):
 
 # Creates separate KDT files for each track (I suck at naming stuff :P)
 def demute_and_isolate_all_tracks_to_separate_files(kdt):
-    dir = os.path.dirname(kdt.path)
-    basename = os.path.basename(kdt.path)
-    basename = os.path.splitext(basename)[0]
-    filecount = kdt.tracks
-    for filenum in range(filecount):
-
+    out_path = os.path.splitext(kdt.path)[0]
+    for filenum in range(kdt.tracks):
         out_buf = kdt.buf
-
         for trknum in range(kdt.tracks):
-            for i in range(2):
+            for cmd in [0x87, 0x8B]: # try finding main/channel vol first, then controller vol
                 kdt.set_track(trknum)
-                cmd = 0x8B if i else 0x87 # find 0x87 (main/channel vol) on first iteration, then 0x8B (controller vol)
-                if kdt.find_cmd(cmd): # seek to first 0x87 command byte (if present)
-                    if trknum < 2 or trknum == filenum: # always demute tracks 0 and 1 (special global tracks)
-                        if not out_buf[kdt.offset+1] & 0x7F: # use the original volume if not muted
-                            out_buf[kdt.offset+1] |= 0x6E # demute (ALL initially demuted tracks in SH1 EXCEPT the second track of both T and T2 are initialized to volume = 0x6E)
+                if kdt.find_cmd(cmd):
+                    if trknum < 2 or trknum == filenum:
+                        if not out_buf[kdt.offset+1] & 0x7F:
+                            out_buf[kdt.offset+1] |= 0x6E # demute (ALL initially demuted tracks in Silent Hill except track 2 of T.KDT and T2.KDT are initialized to 0x6E)
                     else:
-                        out_buf[kdt.offset+1] &= 0x80 # isolate; i.e. mute everything except the track for the current file (and keep MSB intact)
+                        out_buf[kdt.offset+1] &= 0x80 # isolate (keep status bit intact)
 
-        out_path = os.path.join(dir, "%s (track %02d).KDT" % (basename, filenum))
-        with open(out_path, "wb") as out:
+        with open("%s (track %02d).KDT" % (out_path, filenum), "wb") as out:
             out.write(out_buf)
 
 # Creates a new KDT file with specified tracks demuted
 def demute_and_isolate_specified_tracks_to_single_file(kdt, demute_args):
-    demute = []
-    trackgroups = []
+    if not demute_args:
+        sys.exit("ERROR: No tracks to demute supplied")
 
-    for trknum in demute_args:
-        if "-" in trknum:
-            if len(trknum.replace("-", "")) == len(trknum) - 1:
-                start, end = trknum.split("-")
+    demute = []
+
+    for arg in demute_args:
+        if "-" in arg:
+            if arg.count("-") == 1:
+                start, end = arg.split("-")
                 if isnum(start) and isnum(end):
                     start = int(start)
                     end = int(end)
-                    demute.extend(range(start, end+1))
-                    trackgroups.append("%02d-%02d" % (start, end))
+
+                    if start > end:
+                        start, end = end, start
+
+                    if start > kdt.tracks-1:
+                        start = kdt.tracks-1 if kdt.tracks else 0
+
+                    if end > kdt.tracks-1:
+                        end = kdt.tracks-1 if kdt.tracks else 0
+
+                    if start == end:
+                        if start not in demute:
+                            demute.append(start)
+                    else:
+                        for n in range(start, end+1):
+                            if n not in demute:
+                                demute.append(n)
                 else:
-                    sys.exit("Invalid track range: %s" % trknum)
+                    sys.exit("Invalid argument: %s" % arg)
             else:
-                sys.exit("Invalid track range: %s" % trknum)
-        elif isnum(trknum):
-            demute.append(int(trknum))
-            trackgroups.append("%02d" % int(trknum))
+                sys.exit("Invalid argument: %s" % arg)
+        elif isnum(arg):
+            n = int(arg)
+
+            if n > kdt.tracks-1:
+                n = kdt.tracks-1 if kdt.tracks else 0
+
+            if n not in demute:
+                demute.append(n)
         else:
-            sys.exit("Invalid tracks argument: %s" % trknum)
+            sys.exit("Invalid argument: %s" % arg)
 
     out_buf = kdt.buf
 
     for trknum in range(kdt.tracks):
-        for i in range(2):
+        for cmd in [0x87, 0x8B]:
             kdt.set_track(trknum)
-            cmd = 0x8B if i else 0x87
             if kdt.find_cmd(cmd):
                 if trknum < 2 or trknum in demute:
                     if not out_buf[kdt.offset+1] & 0x7F:
@@ -444,18 +459,25 @@ def demute_and_isolate_specified_tracks_to_single_file(kdt, demute_args):
                 else:
                     out_buf[kdt.offset+1] &= 0x80
 
-    dir = os.path.dirname(kdt.path)
+    i = 0
+    tracks = []
+    demute = sorted(demute)
 
-    basename = os.path.basename(kdt.path)
+    while i < len(demute):
+        start = end = demute[i]
+        i += 1
+        while end + 1 in demute:
+            end += 1
+            i += 1
+        if start == end:
+            tracks.append("%02d" % start)
+        else:
+            tracks.append("%02d-%02d" % (start, end))
 
-    basename = os.path.splitext(basename)[0]
-    
-    if len(demute) > 1:
-        trackstr = "tracks %s" % ", ".join( sorted(trackgroups) )
-    elif len(demute) == 1:
-        trackstr = "track %s" % trackgroups[0]
-
-    out_path = os.path.join(dir, "%s (%s).KDT" % (basename, trackstr))
+    if len(demute) == 1:
+        out_path = "%s (track %s).KDT" % (os.path.splitext(kdt.path)[0], tracks[0])
+    else:
+        out_path = "%s (tracks %s).KDT" % (os.path.splitext(kdt.path)[0], ", ".join(tracks))
 
     with open(out_path, "wb") as out:
         out.write(out_buf)
@@ -492,7 +514,7 @@ def kdt2midi(path):
 
         kdt.midi[mtrk_off_start+4:mtrk_off_start+8] = put_u32_be( kdt.moff - (mtrk_off_start + 8) )
 
-    with open(os.path.splitext(path)[0] + ".midi", "wb") as midi:
+    with open(os.path.splitext(kdt.path)[0] + ".midi", "wb") as midi:
         midi.write(kdt.midi[0:kdt.moff])
 
 def main(argc=len(sys.argv), argv=sys.argv):
