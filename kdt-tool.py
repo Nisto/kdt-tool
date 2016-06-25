@@ -143,7 +143,12 @@ class KDT:
         elif cmd == 0xC6: # Set channel
             if self.log: print("(Set Channel), Parameter: 0x%02X" % (param & 0x0F))
             if self.convert:
+                # the tenth channel is the "drum channel" and could result in a
+                # quiet track (both in Awave and fb2k)
                 self.channel = param & 0x0F
+                if self.channel >= 9:
+                    self.channel += 1
+                self.channel &= 0x0F
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
                 self.moff += 4
 
