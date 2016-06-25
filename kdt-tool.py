@@ -6,14 +6,15 @@ import sys
 import struct
 import math
 
-KDT_HEADER_SIZE  = 0x10
-KDT_OFF_ID       = 0x00
-KDT_OFF_FILESIZE = 0x04
-KDT_OFF_TICKDIV  = 0x08
-KDT_OFF_UNUSED1  = 0x0A
-KDT_OFF_TRACKS   = 0x0C
-KDT_OFF_UNUSED2  = 0x0E
-KDT_OFF_SIZETBL  = 0x10
+KDT_FILESIZE_LIMIT = 52428800 # 50 MiB
+KDT_HEADER_SIZE    = 0x10
+KDT_OFF_ID         = 0x00
+KDT_OFF_FILESIZE   = 0x04
+KDT_OFF_TICKDIV    = 0x08
+KDT_OFF_RESV1      = 0x0A
+KDT_OFF_TRACKS     = 0x0C
+KDT_OFF_RESV2      = 0x0E
+KDT_OFF_SIZETBL    = 0x10
 
 # KDT_EVT_SET_CHAN_VOL   = 0x87
 # KDT_EVT_SET_PANNING    = 0x8A
@@ -35,6 +36,9 @@ class KDT:
         self.log = log
         self.convert = convert
 
+        if os.path.getsize(self.path) > KDT_FILESIZE_LIMIT:
+            sys.exit("ERROR: File too large: %s" % self.path)
+
         with open(self.path, "rb") as kdt:
             self.buf = kdt.read()
 
@@ -52,7 +56,7 @@ class KDT:
         self.buf = bytearray(self.buf[:self.filesize])
 
         if self.convert:
-            self.midi = bytearray(51200)
+            self.midi = bytearray(self.filesize * 4)
 
         if self.tracks > 0:
 
