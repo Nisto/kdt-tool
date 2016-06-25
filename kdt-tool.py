@@ -4,7 +4,7 @@
 import os
 import sys
 import struct
-#import math
+import math
 
 KDT_HEADER_SIZE  = 0x10
 KDT_OFF_ID       = 0x00
@@ -38,12 +38,16 @@ class KDT:
         with open(self.path, "rb") as kdt:
             self.buf = kdt.read()
 
-        if len(self.buf) < KDT_HEADER_SIZE or self.buf[KDT_OFF_ID:KDT_OFF_ID+4] != b"KDT1":
-            sys.exit("ERROR: Not a valid KDT1 file: %s" % self.path)
+        if self.buf[KDT_OFF_ID:KDT_OFF_ID+4] != b"KDT1" \
+            or os.path.getsize(self.path) < KDT_HEADER_SIZE :
+                sys.exit("ERROR: Not a valid KDT1 file: %s" % self.path)
 
         self.filesize = get_u32_le(self.buf, KDT_OFF_FILESIZE)
         self.tickdiv = get_u16_le(self.buf, KDT_OFF_TICKDIV)
         self.tracks = get_u16_le(self.buf, KDT_OFF_TRACKS)
+
+        if self.filesize > os.path.getsize(path):
+            sys.exit("ERROR: Indicated filesize exceeds actual filesize: %s" % self.path)
 
         self.buf = bytearray(self.buf[:self.filesize])
 
@@ -108,6 +112,7 @@ class KDT:
         elif cmd == 0x87: # Set main / channel volume
             if self.log: print("(Set Main/Channel Volume), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
+                # self.midi[self.moff+2] = int(127.0 * math.sqrt((param & 0x7F) / 127.0))
                 self.midi[self.moff+0] = 0xB0 | self.channel
                 self.midi[self.moff+1] = 0x07
                 self.midi[self.moff+2] = param & 0x7F
@@ -116,6 +121,7 @@ class KDT:
         elif cmd == 0x8A: # Set panning
             if self.log: print("(Set Panning), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
+                # self.midi[self.moff+2] = int(127.0 * math.sqrt((param & 0x7F) / 127.0))
                 self.midi[self.moff+0] = 0xB0 | self.channel
                 self.midi[self.moff+1] = 0x0A
                 self.midi[self.moff+2] = param & 0x7F
@@ -124,6 +130,7 @@ class KDT:
         elif cmd == 0x8B: # Set controller volume ("expression is a percentage of the channel volume"?)
             if self.log: print("(Set Controller Volume), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
+                # self.midi[self.moff+2] = int(127.0 * math.sqrt((param & 0x7F) / 127.0))
                 self.midi[self.moff+0] = 0xB0 | self.channel
                 self.midi[self.moff+1] = 0x0B
                 self.midi[self.moff+2] = param & 0x7F
@@ -187,7 +194,7 @@ class KDT:
                 self.midi[self.moff+2] = 0
                 self.moff += 3
 
-        elif cmd == 0xCC: # Set tempo, low (added between 1999-2001)
+        elif cmd == 0xCC: # Set tempo, low (added sometime in 2001)
             # (param & 0x7F) & 0xFF
             if self.log: print("(Set Tempo, BPM=0-127), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
@@ -201,7 +208,7 @@ class KDT:
                 self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
                 self.moff += 6
 
-        elif cmd == 0xCD: # Set tempo, high (added between 1999-2001)
+        elif cmd == 0xCD: # Set tempo, high (added sometime in 2001)
             # (param & 0x7F) | 0x80
             if self.log: print("(Set Tempo, BPM=128-255), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
@@ -215,7 +222,7 @@ class KDT:
                 self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
                 self.moff += 6
 
-        elif cmd == 0xCE: # Reserved (does nothing) as of 2002 (added between 1999-2001)
+        elif cmd == 0xCE: # Reserved (does nothing) as of 2002
             if self.log: print("(Reserved), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
                 self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
@@ -503,7 +510,7 @@ def kdt2midi(path):
         kdt.moff += 4
         kdt.midi[kdt.moff+0] = 0x00 # delta time
         kdt.midi[kdt.moff+1] = 0xFF # meta event
-        kdt.midi[kdt.moff+2] = 0x03 # track/seq name
+        kdt.midi[kdt.moff+2] = 0x03 # event: track/seq name
         kdt.midi[kdt.moff+3] = 0x08 # size
         kdt.moff += 4
         kdt.midi[kdt.moff:kdt.moff+8] = bytes("Track %02d" % trknum, encoding="ascii")
@@ -524,9 +531,31 @@ def main(argc=len(sys.argv), argv=sys.argv):
         sys.exit("ERROR: Invalid path")
 
     # for filename in os.listdir(path):
-    #     filepath = os.path.join(path, filename)
-    #     if os.path.splitext(filename)[1].upper() == ".KDT":
-    #         print_note_event_counts(KDT(filepath))
+    #     fp = os.path.join(path, filename)
+    #     found = False
+    #     if os.path.splitext(fp)[1].upper() == ".KDT":
+    #         kdt = KDT(fp)
+    #         for track in range(2, kdt.tracks):
+    #             kdt.set_track(track)
+    #             if kdt.find_cmd(0xC8):
+    #                 print("Found pitch bend in track %02d of %s" % (track, filename))
+    #                 found = True
+    #     if found:
+    #         print("\n")
+
+    # if os.path.isdir(path):
+    #     for filename in os.listdir(path):
+    #         filepath = os.path.join(path, filename)
+    #         if os.path.splitext(filename)[1].upper() == ".KDT":
+    #             # print_note_event_counts(KDT(filepath))
+    #             print_initial_track_volumes(KDT(filepath))
+    #         #if os.path.splitext(filename)[1].upper() == ".TD":
+    #         #    with open(filepath, "rb") as td:
+    #         #        with open("%s.kdt" % os.path.splitext(filepath)[0], "wb") as kdt:
+    #         #            kdt.write(td.read()[0x30:])
+    # else:
+    #     sys.exit("ERROR: Expected a directory path")
+    # print_initial_track_volumes(KDT(path))
 
     # demute_and_isolate_all_tracks_to_separate_files(KDT(path))
 
