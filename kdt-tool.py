@@ -21,7 +21,7 @@ KDT_OFF_SIZETBL    = 0x10
 # KDT_EVT_SET_CTRL_VOL   = 0x8B
 # KDT_EVT_SET_CHANNEL    = 0xC6
 # KDT_EVT_SET_TEMPO      = 0xC7
-# KDT_EVT_UNK            = 0xC8
+# KDT_EVT_PITCH_BEND     = 0xC8
 # KDT_EVT_SET_INSTRUMENT = 0xC9
 # KDT_EVT_NOTE_OFF_STOP  = 0xCA
 # KDT_EVT_NOTE_OFF_CONT  = 0xCB
@@ -173,12 +173,14 @@ class KDT:
                 self.midi[self.moff+5] = (mpqn >>  0) & 0xFF
                 self.moff += 6
 
-        elif cmd == 0xC8: # Not sure.. calls SsUtVibrateOff ???
-            # param & 0x7F
-            if self.log: print("(Unknown, calls SsUtVibrateOff), Parameter: 0x%02X" % (param & 0x7F))
+        elif cmd == 0xC8: # Pitch bend
+            if self.log: print("(Pitch Bend), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
-                self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
-                self.moff += 4
+                pitch = (param & 0x7F) << 7
+                self.midi[self.moff+0] = 0xE0 | self.channel
+                self.midi[self.moff+1] = pitch & 0x7F # LSB
+                self.midi[self.moff+2] = pitch >> 7 # MSB
+                self.moff += 3
 
         elif cmd == 0xC9: # Set instrument
             if self.log: print("(Set Instrument), Parameter: 0x%02X" % (param & 0x7F))
@@ -241,8 +243,12 @@ class KDT:
             # param & 0x??
             if self.log: print("(Reverb Send Amount?), Parameter: 0x%02X" % (param & 0x7F))
             if self.convert:
-                self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
-                self.moff += 4
+                # self.midi[self.moff:self.moff+4] = b"\xFF\x01\x01\x3F"
+                # self.moff += 4
+                self.midi[self.moff+0] = 0xB0 | self.channel
+                self.midi[self.moff+1] = 0x5B
+                self.midi[self.moff+2] = param & 0x7F
+                self.moff += 3
 
         elif cmd == 0xF6: # Tune request?
             # param & 0x??
