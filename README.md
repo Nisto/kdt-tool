@@ -8,7 +8,7 @@ General-purpose tool for Konami's sequenced music format "KDT1" allowing you to:
 
 ### Usage
 * Convert to MIDI: `kdt-tool.py` `-c` `path to .KDT file`
-* Dump event data: `kdt-tool.py` `-d` `path to .KDT file`
+* Dump event data: `kdt-tool.py` `-l` `path to .KDT file`
 
 ### Known issues
 MIDI conversion is not perfect, but it will get you notes, timing, track configuration and the most basic commands converted. The remaining events which needs support is likely a subset stemming from Sony's SEQp format and should be relatively easy to add hopefully, but I have not had the time to really look into it.
