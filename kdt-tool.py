@@ -22,7 +22,7 @@ class KDT:
             sys.exit("ERROR: File too large: %s" % self.path)
 
         with open(self.path, "rb") as kdt:
-            self.buf = kdt.read()[0x30:]
+            self.buf = kdt.read()
 
         if self.buf[:4] != b"KDT1" or os.path.getsize(self.path) < KDT.HEADER_SIZE:
             sys.exit("ERROR: Not a valid KDT1 file: %s" % self.path)
