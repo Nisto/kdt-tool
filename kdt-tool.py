@@ -383,7 +383,7 @@ def kdt2midi(path):
         kdt.moff += 4
 
         # 0x0C: track name
-        kdt.midi[kdt.moff:kdt.moff+8] = b"Track %02d" % trknum
+        kdt.midi[kdt.moff:kdt.moff+8] = bytes("Track %02d" % trknum, encoding="ascii")
         kdt.moff += 8
 
         while kdt.offset < kdt.trk_off_end:
