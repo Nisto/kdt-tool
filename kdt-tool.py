@@ -101,7 +101,62 @@ class KDT:
                 self.moff += 3
 
         elif cmd == 0x06:
-            if self.log: print("Data Entry")
+            if self.log:
+                # see PlayStation Technical Reference CD:
+                # \DEVREFS\SOUNDxx.PDF
+                if self.nrpn1 <= 16: # tone number
+                    if self.nrpn2 == 0: # attr number
+                        print("NRPN - Set Priority")
+                    elif self.nrpn2 == 1:
+                        print("NRPN - Set Mode")
+                    elif self.nrpn2 == 2:
+                        print("NRPN - Set Limit Low")
+                    elif self.nrpn2 == 3:
+                        print("NRPN - Set Limit High")
+                    elif self.nrpn2 == 4:
+                        print("NRPN - Set ADSR (AR-L)")
+                    elif self.nrpn2 == 5:
+                        print("NRPN - Set ADSR (AR-E)")
+                    elif self.nrpn2 == 6:
+                        print("NRPN - Set ADSR (DR)")
+                    elif self.nrpn2 == 7:
+                        print("NRPN - Set ADSR (SL)")
+                    elif self.nrpn2 == 8:
+                        print("NRPN - Set ADSR (SR-L)")
+                    elif self.nrpn2 == 9:
+                        print("NRPN - Set ADSR (SR-E)")
+                    elif self.nrpn2 == 10:
+                        print("NRPN - Set ADSR (RR-L)")
+                    elif self.nrpn2 == 11:
+                        print("NRPN - Set ADSR (RR-E)")
+                    elif self.nrpn2 == 12:
+                        print("NRPN - Set ADSR (SR +/-)")
+                    elif self.nrpn2 == 13:
+                        print("NRPN - Set Vibrate Time")
+                    elif self.nrpn2 == 14:
+                        print("NRPN - Set Portamento Depth")
+                    elif self.nrpn2 == 15:
+                        print("NRPN - Set Reverb Type")
+                    elif self.nrpn2 == 16:
+                        print("NRPN - Set Reverb Depth")
+                    elif self.nrpn2 == 17:
+                        print("NRPN - Set Echo Feedback")
+                    elif self.nrpn2 == 18:
+                        print("NRPN - Set Echo Delay Time")
+                    elif self.nrpn2 == 19:
+                        print("NRPN - Set Delay Delay Time")
+                    elif self.nrpn2 == 21:
+                        print("NRPN - Set Vibrate Depth")
+                    elif self.nrpn2 == 22:
+                        print("NRPN - Set Portamento Time")
+                    else:
+                        print("NRPN - Set Unknown Attribute")
+                elif self.nrpn1 == 20:
+                    print("NRPN - Set Loop Count")
+                elif self.nrpn1 == 40:
+                    print("NRPN - Set Mark Callback Value")
+                else:
+                    print("NRPN Data Entry")
             if self.convert:
                 self.midi[self.moff+0] = 0xB0 | self.channel
                 self.midi[self.moff+1] = 0x06
@@ -241,23 +296,30 @@ class KDT:
             if self.convert:
                 self.midi[self.moff:self.moff+13] = b"\xFF\x01\x0ANRPN (LSB)"
                 self.moff += 13
+            self.nrpn2 = param
 
         elif cmd == 0x63:
-            if param == 0x14:
-                if self.log: print("Loop Start")
+            if param == 20:
+                if self.log: print("NRPN - Set Loop Start")
                 if self.convert:
                     self.midi[self.moff:self.moff+13] = b"\xFF\x01\x0ALoop Start"
                     self.moff += 13
-            elif param == 0x1E:
-                if self.log: print("Loop End")
+            elif param == 30:
+                if self.log: print("NRPN - Set Loop End")
                 if self.convert:
                     self.midi[self.moff:self.moff+11] = b"\xFF\x01\x08Loop End"
                     self.moff += 11
+            elif param == 40:
+                if self.log: print("NRPN - Set Mark")
+                if self.convert:
+                    self.midi[self.moff:self.moff+7] = b"\xFF\x01\x04Mark"
+                    self.moff += 7
             else:
                 if self.log: print("NRPN (MSB)")
                 if self.convert:
                     self.midi[self.moff:self.moff+13] = b"\xFF\x01\x0ANRPN (MSB)"
                     self.moff += 13
+            self.nrpn1 = param
 
         elif cmd == 0x76:
             if self.log: print("Seq Beat")
